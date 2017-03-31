@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 def slidingDotProduct(Q, T):
     n = len(T)
     m = len(Q)
-    
+
     Ta = list(T) # Copy the T without modifying the original
     [Ta.append(0) for i in range(0, n)]
     
@@ -29,7 +29,6 @@ def slidingDotProduct(Q, T):
     Taf = np.fft.fft(Ta)
     
     QT = np.fft.ifft(np.multiply(Qraf, Taf))
-    
     return QT[m:n]
     
 def calculateDistanceProfile(QT, Q, T, sumT, sumT2, sumQ, sumQ2, meanT, meanT_2, sigmaT, sigmaT2):
@@ -37,14 +36,12 @@ def calculateDistanceProfile(QT, Q, T, sumT, sumT2, sumQ, sumQ2, meanT, meanT_2,
     m = len(Q)
 
     # computing the distances -- O(n) time.
+
     a = [(sumT2[i] - 2*sumT[i]*meanT[i] + m*meanT_2[i])/sigmaT2[i] for i in range(0, n - m)]
-    b = [2*(QT[i] - sumQ*meanT[i])/sigmaT[i] for i in range(0, n - m)]
+    b = [-2*(QT[i] - sumQ*meanT[i])/sigmaT[i] for i in range(0, n - m)]
     c = sumQ2
-    
     dist = [a[i] + b[i] + c for i in range(0, n - m)]
-    
-    D = np.absolute(np.sqrt(dist)) 
-        
+    D = np.abs(np.sqrt(dist))
     return D
 
 # The code below takes O(m) for each subsequence
@@ -72,25 +69,29 @@ def computeMeanStd(Q, T):
     
 # MUEEN’S ALGORITHM FOR SIMILARITY SEARCH (MASS)
 def mass(Q, T):
+    if np.std(Q)!=0:
+        Q = (Q -np.mean(Q))/np.std(Q)
     QT = slidingDotProduct(Q, T)
     sumT, sumT2, sumQ, sumQ2, meanT, meanT_2, sigmaT, sigmaT2 = computeMeanStd(Q, T)
     D = calculateDistanceProfile(QT, Q, T, sumT, sumT2, sumQ, sumQ2, meanT, meanT_2, sigmaT, sigmaT2)
     
     return D
-    
-def elementWiseMin(Pab, Iab, D, idx):
+
+def elementWiseMin(Pab, Iab, D, idx,ignore_trivial,m):
+
     Pab_copy = [1000000 for i in range(0, len(Pab))]
     flag = False
-    
+
     for i in range(0, len(D)):
-        if(Pab[i] == float('Inf')):
-            Pab_copy[i] = D[i]
-            Iab[i] = idx
-            flag = True
-        elif(D[i] < Pab[i]):
-            Pab[i] = D[i]
-            Iab[i] = idx
-            
+        if not ignore_trivial or (np.abs(idx-i)>m):
+            if (Pab[i] == float('Inf')):
+                Pab_copy[i] = D[i]
+                Iab[i] = idx
+                flag = True
+            elif (D[i] < Pab[i]):
+                Pab[i] = D[i]
+                Iab[i] = idx
+
     if flag:
         return Pab_copy, Iab
     else:
@@ -106,9 +107,8 @@ def stamp(Ta, Tb, m):
     idxes = range(0, nb - m)
     
     for idx in idxes:
-        print(idx)
         D = mass(Tb[idx : idx + m], Ta)
-        Pab, Iab = elementWiseMin(Pab, Iab, D, idx)
+        Pab, Iab = elementWiseMin(Pab, Iab, D, idx, ignore_trivial=(Ta==Tb).all(),m=m)
         
     return Pab, Iab
 
@@ -116,24 +116,40 @@ def stamp(Ta, Tb, m):
 def test_stamp(Ta, Tb, m):
     start_time = time.time()
     
-    df_serie_a = pd.read_csv(Ta, header= 0)
-    df_serie_b = pd.read_csv(Tb, header= 0)
-    
-    ts_a = np.ravel(df_serie_a['value']).tolist()
-    ts_b = np.ravel(df_serie_b['value']).tolist()
-    
-    Pab, Iab = stamp(ts_a, ts_b, m)
+        
+    Pab, Iab = stamp(Ta, Tb, m)
     print("--- %s seconds ---" % (time.time() - start_time))
     
-    plot_graphics(Pab)
+    plot_graphics(Ta,Tb,Pab, Iab,m)
+    return Pab
     
-def plot_graphics(values):
+def plot_graphics(Ta,Tb,values,indexes,m):
     fig_width = 16
     fig_height = 8
     fig_dpi = 100
     plt.figure(figsize=(fig_width, fig_height), dpi=fig_dpi)
+    plt.subplot(411)
+    plt.plot(Ta)
+    plt.xlim((0,len(Tb)))
 
+    plt.title('A')
+    plt.subplot(412)
+    plt.plot(Tb)
+    plt.plot(range(np.argmax(values),np.argmax(values)+m),Tb[np.argmax(values):np.argmax(values)+m],c='r')
+
+    plt.title('B')
+    plt.xlim((0,len(Tb)))
+
+    plt.subplot(413)
+    plt.title('P_ab')
     plt.plot(range(0,len(values)), values, '#ff5722')
+    plt.plot(np.argmax(values),np.max(values),marker='x',ms=10)
+    plt.xlim((0,len(Tb)))
+    plt.xlabel('Index')
+    plt.ylabel('Value')
+    plt.subplot(414)    
+    plt.title('P_ab')
+    plt.plot(range(0,len(indexes)), indexes, '#ff5722')
     plt.xlabel('Index')
     plt.ylabel('Value')
     plt.show()
