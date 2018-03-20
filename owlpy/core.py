@@ -8,13 +8,11 @@
         Shapelets. IEEE ICDM 2016.
 '''
 import numpy as np
-import pandas as pd
 import time
-
 import matplotlib.pyplot as plt
 
 
-def slidingDotProduct(q, t):
+def sliding_dot_product(q, t):
     n = t.size
     m = q.size
 
@@ -36,7 +34,7 @@ def slidingDotProduct(q, t):
     return qt[m:n]
 
 
-def calculateDistanceProfile(q, t, qt, a, sum_q, sum_q2, mean_t, sigma_t):
+def calculate_distance_profile(q, t, qt, a, sum_q, sum_q2, mean_t, sigma_t):
     n = t.size
     m = q.size
 
@@ -50,14 +48,14 @@ def calculateDistanceProfile(q, t, qt, a, sum_q, sum_q2, mean_t, sigma_t):
 
 # The code below takes O(m) for each subsequence
 # you should replace it for MASS
-def computeMeanStdForQuery(Q):
+def compute_mean_std_for_query(Q):
     # Compute Q stats -- O(n)
     sumQ = np.sum(Q)
     sumQ2 = np.sum(np.power(Q, 2))
     return sumQ, sumQ2
 
 
-def preComputeMeanStdForTS(ta, m):
+def pre_compute_mean_std_for_TS(ta, m):
     na = len(ta)
     sum_t = np.zeros(na - m)
     sum_t2 = np.zeros(na - m)
@@ -81,14 +79,14 @@ def mass(Q, T, a, meanT, sigmaT):
     # Z-Normalisation
     if np.std(Q) != 0:
         Q = (Q - np.mean(Q)) / np.std(Q)
-    QT = slidingDotProduct(Q, T)
-    sumQ, sumQ2 = computeMeanStdForQuery(Q)
-    return calculateDistanceProfile(Q, T, QT, a, sumQ, sumQ2, meanT, sigmaT)
+    QT = sliding_dot_product(Q, T)
+    sumQ, sumQ2 = compute_mean_std_for_query(Q)
+    return calculate_distance_profile(Q, T, QT, a, sumQ, sumQ2, meanT, sigmaT)
 
 
-def elementWiseMin(Pab, Iab, D, idx, ignore_trivial, m):
+def element_wise_min(Pab, Iab, D, idx, ignore_trivial, m):
     for i in range(0, len(D)):
-        if not ignore_trivial or (np.abs(idx - i) > m):
+        if not ignore_trivial or (np.abs(idx - i) > m/2.0): # if it's a self-join, ignore trivial matches in [-m/2,m/2]
             if D[i] < Pab[i]:
                 Pab[i] = D[i]
                 Iab[i] = idx
@@ -96,13 +94,22 @@ def elementWiseMin(Pab, Iab, D, idx, ignore_trivial, m):
 
 
 def stamp(Ta, Tb, m):
+    """
+    Compute the Matrix Profile between time-series Ta and Tb.
+    If Ta==Tb, the operation is a self-join and trivial matches are ignored.
+    
+    :param Ta: time-series, np.array
+    :param Tb: time-series, np.array
+    :param m: subsequence length
+    :return: Matrix Profile, Nearest-Neighbor indexes
+    """
     nb = len(Tb)
     na = len(Ta)
-    Pab = np.full(nb - m, float('Inf'))
-    Iab = np.full(nb - m, 0)
-    idxes = range(0, nb - m)
+    Pab = np.ones(na - m)* np.inf
+    Iab = np.zeros(na - m)
+    idxes = np.arange(nb - m + 1)
 
-    sumT, sumT2, meanT, meanT_2, meanTP2, sigmaT, sigmaT2 = preComputeMeanStdForTS(Ta, m)
+    sumT, sumT2, meanT, meanT_2, meanTP2, sigmaT, sigmaT2 = pre_compute_mean_std_for_TS(Ta, m)
 
     a = np.zeros(na - m)
     for i in range(0, na - m):
@@ -110,7 +117,7 @@ def stamp(Ta, Tb, m):
 
     for idx in idxes:
         D = mass(Tb[idx: idx + m], Ta, a, meanT, sigmaT)
-        Pab, Iab = elementWiseMin(Pab, Iab, D, idx, ignore_trivial=(Ta == Tb).all(), m=m)
+        Pab, Iab = element_wise_min(Pab, Iab, D, idx, ignore_trivial = np.atleast_1d(Ta == Tb).all(), m=m)
 
     return Pab, Iab
 
@@ -122,41 +129,43 @@ def test_stamp(Ta, Tb, m):
     Pab, Iab = stamp(Ta, Tb, m)
     print("--- %s seconds ---" % (time.time() - start_time))
 
-    plot_graphics(Ta, Tb, Pab, Iab, m)
-    return Pab
+    plot_discord(Ta, Tb, Pab, Iab, m, )
+    return Pab, Iab
 
 
-def plot_graphics(Ta, Tb, values, indexes, m):
-    fig_width = 16
-    fig_height = 8
-    fig_dpi = 100
-    plt.figure(figsize=(fig_width, fig_height), dpi=fig_dpi)
+def plot_discord(Ta, Tb, values, indexes, m):
+    from matplotlib import gridspec
+    plt.figure(figsize=(8,4))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[int(len(Ta)/len(Tb)), 1]) 
 
-    plt.subplot(411)
-    plt.plot(Ta)
+    plt.subplot(gs[0])
+    plt.plot(Ta, linestyle='--')
     plt.xlim((0, len(Ta)))
-    plt.title('A')
+        
+    plt.plot(range(np.argmin(values), np.argmin(values) + m), Ta[np.argmin(values):np.argmin(values) + m], c='g', label='Best Match')
+    plt.legend(loc='best')
+    plt.title('Time-Series')
+    plt.ylim((-3,3))
 
-    plt.subplot(412)
+    plt.subplot(gs[1])
     plt.plot(Tb)
-    plt.plot(range(np.argmax(values), np.argmax(values) + m), Tb[np.argmax(values):np.argmax(values) + m], c='r')
-    plt.title('B')
+    
+
+    plt.title('Query')
     plt.xlim((0, len(Tb)))
+    plt.ylim((-3,3))
 
-    plt.subplot(413)
-    plt.title('P_ab')
+    plt.figure()
+    plt.title('Matrix Profile')
     plt.plot(range(0, len(values)), values, '#ff5722')
-    plt.plot(np.argmax(values), np.max(values), marker='x', ms=10)
+    plt.plot(np.argmax(values), np.max(values), marker='x', c='r', ms=10)
+    plt.plot(np.argmin(values), np.min(values), marker='^', c='g', ms=10)
+
     plt.xlim((0, len(Ta)))
     plt.xlabel('Index')
     plt.ylabel('Value')
 
-    plt.subplot(414)
-    plt.title('I_ab')
-    plt.plot(range(0, len(indexes)), indexes, '#ff5722')
-    plt.xlabel('Index')
-    plt.ylabel('Value')
-    plt.xlim((0, len(Ta)))
+
     plt.show()
 
 
