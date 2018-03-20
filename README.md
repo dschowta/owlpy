@@ -15,13 +15,19 @@ python setup.py install
 
 ## Test
 
-To test your installation, in the source directory run:
+To test the library, in the source directory run:
 ```python
-python test.py 
+python test_motif_discovery.py 
+```
+to discover motifs and discords in the ECGFiveDays dataset, or
+
+```python
+python test_query_matching.py 
 ```
 
-This runs the Matrix Profile on two samples from the UCR Coffee Dataset, and plots the discord subsequence between the two, as well as the Matrix Profile representation.
+to match a query subsequence on the Coffee datset.
 
+Both dataset are from the [UCR Archive](http://timeseriesclassification.com/dataset.php).
 
 ## Usage
 
@@ -29,7 +35,7 @@ To use OWLPY, simply import from the _core_ package, as in:
 ```python
 from owlpy.core import *
 import numpy as np 
-A = np.random.rand(100)
-B = np.random.rand(100)
-MP, I = stamp(A,B,15)
+ts = np.random.rand(100)
+query = np.random.rand(50)
+MP, I = stamp(ts,query,15)
 ```
