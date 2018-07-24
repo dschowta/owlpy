@@ -212,8 +212,7 @@ def test_stomp(Ta, m):
 
     Pab, Iab = stomp(Ta, m)
     print("--- %s seconds ---" % (time.time() - start_time))
-
-    plot_discord(Ta, Tb, Pab, Iab, m, )
+    plot_motif(Ta, Pab, Iab, m)
     return Pab, Iab
 
 # Quick Test
@@ -223,9 +222,37 @@ def test_stamp(Ta, Tb, m):
     Pab, Iab = stamp(Ta, Tb, m)
     print("--- %s seconds ---" % (time.time() - start_time))
 
-    plot_discord(Ta, Tb, Pab, Iab, m, )
+    plot_discord(Ta,  Pab, Iab, m, )
     return Pab, Iab
 
+
+def plot_motif(Ta, values, indexes, m):
+    from matplotlib import gridspec
+    plt.figure(figsize=(8, 4))
+    plt.subplot(211)
+    plt.plot(Ta, linestyle='--', alpha=0.5)
+    plt.xlim((0, len(Ta)))
+
+    print(np.argmax(values))
+
+    plt.plot(range(np.argmin(values), np.argmin(values) + m), Ta[np.argmin(values):np.argmin(values) + m], c='g',
+             label='Top Motif')
+    plt.plot(range(np.argmax(values), np.argmax(values) + m), Ta[np.argmax(values):np.argmax(values) + m], c='r',
+             label='Top Discord')
+
+    plt.legend(loc='best')
+    plt.title('Time-Series')
+
+    plt.subplot(212)
+    plt.title('Matrix Profile')
+    plt.plot(range(0, len(values)), values, '#ff5722')
+    plt.plot(np.argmax(values), np.max(values), marker='x', c='r', ms=10)
+    plt.plot(np.argmin(values), np.min(values), marker='^', c='g', ms=10)
+
+    plt.xlim((0, len(Ta)))
+    plt.xlabel('Index')
+    plt.ylabel('Value')
+    plt.show()
 
 def plot_discord(Ta, Tb, values, indexes, m):
     from matplotlib import gridspec
