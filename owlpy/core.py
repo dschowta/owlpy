@@ -33,6 +33,26 @@ def sliding_dot_product(q, t):
     qt = np.fft.ifft(np.multiply(qraf, taf))
     return qt[m:n]
 
+def sliding_dot_product_stomp(q, t):
+    n = t.size
+    m = q.size
+
+    # Append t with n zeros
+    ta = np.append(t, np.zeros(n))
+
+    # Reverse Q
+    qr = np.flip(q, 0)
+
+    # Append qra
+    qra = np.append(qr, np.zeros(2 * n - m))
+
+    # Compute FFTs
+    qraf = np.fft.fft(qra)
+    taf = np.fft.fft(ta)
+
+    # Compute the inverse FFT to the element-wise multiplication of qraf and taf
+    qt = np.fft.ifft(np.multiply(qraf, taf))
+    return qt[m-1:n]
 
 def calculate_distance_profile(q, t, qt, a, sum_q, sum_q2, mean_t, sigma_t):
     n = t.size
@@ -73,6 +93,19 @@ def pre_compute_mean_std_for_TS(ta, m):
     sigma_t = np.sqrt(sigma_t2)
     return sum_t, sum_t2, mean_t, mean_t2, mean_t_p2, sigma_t, sigma_t2
 
+def pre_compute_mean_std_for_TS_stomp(ta, m):
+    na = len(ta)
+    # Compute the stats for t
+    cumulative_sum_t = np.cumsum(ta)
+    cumulative_sum_t2 = np.cumsum(np.power(ta, 2))
+    sum_t = (cumulative_sum_t[m-1:na] - np.concatenate(([0], cumulative_sum_t[0:na-m])))
+    sum_t2 = (cumulative_sum_t2[m-1:na] - np.concatenate(([0], cumulative_sum_t2[0:na-m])))
+    mean_t = np.divide(sum_t, m)
+    mean_t2 = np.divide(sum_t2, m)
+    mean_t_p2 = np.power(mean_t, 2)
+    sigma_t2 = np.subtract(mean_t2, mean_t_p2)
+    sigma_t = np.sqrt(sigma_t2)
+    return sum_t, sum_t2, mean_t, mean_t2, mean_t_p2, sigma_t, sigma_t2
 
 # MUEEN’S ALGORITHM FOR SIMILARITY SEARCH (MASS)
 def mass(Q, T, a, meanT, sigmaT):
@@ -115,12 +148,73 @@ def stamp(Ta, Tb, m):
     for i in range(0, na - m):
         a[i] = (sumT2[i] - 2 * sumT[i] * meanT[i] + m * meanTP2[i]) / sigmaT2[i]
 
+    ignore_trivial = np.atleast_1d(Ta == Tb).all()
     for idx in idxes:
         D = mass(Tb[idx: idx + m], Ta, a, meanT, sigmaT)
-        Pab, Iab = element_wise_min(Pab, Iab, D, idx, ignore_trivial = np.atleast_1d(Ta == Tb).all(), m=m)
+        if(ignore_trivial):
+            #ignore trivial minimum and  maximum
+            minIdx = int(np.maximum(idx-m/2.0,0))
+            maxIdx = int(np.minimum(idx+m/2.0,len(D)))
+            D[minIdx:maxIdx:1] = np.inf
 
+        Iab[Pab>D] = i
+        Pab = np.minimum(Pab,D)
     return Pab, Iab
 
+def stomp(T, m):
+    """
+    Compute the Matrix Profile with self join for T
+
+    :param T: time-series, np.array
+    :param Tb: time-series, np.array
+    :param m: subsequence length
+    :return: Matrix Profile, Nearest-Neighbor indexes
+    """
+    epsilon = 1e-10
+
+    n = len(T)
+
+    seq_l = n - m
+    _, _, meanT, _, _, sigmaT, _ = pre_compute_mean_std_for_TS_stomp(T, m)
+
+
+    Pab = np.full(seq_l+1,np.inf)
+    Iab =  np.zeros(n - m +1)
+    ignore_trivial = True
+    for idx in range(0,seq_l):
+        # There's somthing with normalization
+        Q_std = sigmaT[idx] if sigmaT[idx] > epsilon else epsilon
+        if idx == 0:
+            QT = sliding_dot_product_stomp(T[0:m], T).real
+            QT_first = np.copy(QT)
+        else:
+            QT[1:] = QT[0:-1]- (T[0:seq_l] * T[idx - 1]) + (T[m:n] * T[idx + m - 1])
+            QT[0] = QT_first[idx]
+
+        # Calculate distance profile
+        D = (2 * (m - (QT - m * meanT * meanT[idx]) / (Q_std * sigmaT)))
+        D[D<epsilon] = 0
+        if (ignore_trivial):
+            # ignore trivial minimum and  maximum
+            minIdx = int(np.maximum(idx - m / 2.0, 0))
+            maxIdx = int(np.minimum(idx + m / 2.0, len(D)))
+            D[minIdx:maxIdx:1] = np.inf
+
+        Iab[Pab > D] = idx
+        np.minimum(Pab, D,Pab)
+        
+    np.sqrt(Pab,Pab)
+    return Pab, Iab
+
+# Quick Test
+def test_stomp(Ta, m):
+    start_time = time.time()
+
+    Pab, Iab = stomp(Ta, m)
+    print("--- %s seconds ---" % (time.time() - start_time))
+
+    plot_discord(Ta, Tb, Pab, Iab, m, )
+    return Pab, Iab
 
 # Quick Test
 def test_stamp(Ta, Tb, m):
