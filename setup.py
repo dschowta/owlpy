@@ -16,7 +16,7 @@ def read(*parts):
     # intentionally *not* adding an encoding option to open
     return codecs.open(os.path.join(HERE, *parts), 'r').read()
 
-LONG_DESCRIPTION = read('README.rst')
+LONG_DESCRIPTION = read('README.md')
 
 
 class PyTest(TestCommand):
